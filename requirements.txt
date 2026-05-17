@@ -1,7 +1,4 @@
-aiogram==3.3.0
-requests==2.31.0
-beautifulsoup4==4.12.2
-aiohttp==3.9.1
+playwright==1.40.0
+python-telegram-bot==20.7
 python-dotenv==1.0.0
-lxml==4.9.3
-colorama==0.4.6
+aiofiles==23.2.1
