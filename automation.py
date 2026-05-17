@@ -9,7 +9,6 @@ from playwright.async_api import async_playwright
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 ]
 
@@ -17,32 +16,18 @@ USER_AGENTS = [
 #      تأخير بشري عشوائي
 # ═══════════════════════════════
 
-async def human_delay(min_ms=500, max_ms=2000):
+async def human_delay(min_ms=800, max_ms=2500):
     delay = random.randint(min_ms, max_ms)
     await asyncio.sleep(delay / 1000)
 
-async def human_type(page, selector, text):
-    """كتابة بشرية بتأخير عشوائي بين كل حرف"""
-    element = await page.wait_for_selector(selector, timeout=10000)
+async def human_type(element, text):
     await element.click()
     await human_delay(200, 500)
+    await element.fill("")
     for char in text:
         await element.type(char)
         await asyncio.sleep(random.uniform(0.05, 0.15))
-
-async def human_click(page, selector):
-    """ضغط بشري مع تحريك الماوس"""
-    element = await page.wait_for_selector(selector, timeout=10000)
-    box = await element.bounding_box()
-    if box:
-        x = box["x"] + box["width"] / 2 + random.randint(-5, 5)
-        y = box["y"] + box["height"] / 2 + random.randint(-5, 5)
-        await page.mouse.move(x, y)
-        await human_delay(100, 300)
-        await page.mouse.click(x, y)
-    else:
-        await element.click()
-    await human_delay(300, 800)
+    await human_delay(200, 400)
 
 # ═══════════════════════════════
 #      إعداد المتصفح
@@ -60,9 +45,9 @@ async def create_browser(playwright):
             "--disable-extensions",
             "--disable-gpu",
             "--window-size=1280,800",
-            "--start-maximized",
             "--disable-web-security",
             "--allow-running-insecure-content",
+            "--ignore-certificate-errors",
         ]
     )
 
@@ -71,47 +56,25 @@ async def create_browser(playwright):
         user_agent=random.choice(USER_AGENTS),
         locale="en-US",
         timezone_id="America/New_York",
-        permissions=["geolocation"],
         extra_http_headers={
             "Accept-Language": "en-US,en;q=0.9",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
         }
     )
 
-    # إخفاء علامات الأتمتة
     await context.add_init_script("""
-        // إخفاء webdriver
-        Object.defineProperty(navigator, 'webdriver', {
-            get: () => undefined
-        });
-
-        // إخفاء plugins
-        Object.defineProperty(navigator, 'plugins', {
-            get: () => [1, 2, 3, 4, 5]
-        });
-
-        // إخفاء languages
-        Object.defineProperty(navigator, 'languages', {
-            get: () => ['en-US', 'en']
-        });
-
-        // إخفاء chrome
-        window.chrome = {
-            runtime: {},
-            loadTimes: function() {},
-            csi: function() {},
-            app: {}
-        };
-
-        // إخفاء permissions
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+        window.chrome = { runtime: {}, loadTimes: function() {}, csi: function() {}, app: {} };
         const originalQuery = window.navigator.permissions.query;
         window.navigator.permissions.query = (parameters) => (
             parameters.name === 'notifications' ?
                 Promise.resolve({ state: Notification.permission }) :
                 originalQuery(parameters)
         );
-
-        // إخفاء automation
         delete window.cdc_adoQpoasnfa76pfcZLmcfl_Array;
         delete window.cdc_adoQpoasnfa76pfcZLmcfl_Promise;
         delete window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol;
@@ -125,54 +88,126 @@ async def create_browser(playwright):
 
 async def google_login(page, email, password):
     try:
+        # فتح صفحة تسجيل الدخول
         await page.goto(
             "https://accounts.google.com/signin/v2/identifier",
-            wait_until="networkidle",
-            timeout=30000
+            wait_until="domcontentloaded",
+            timeout=60000
         )
-        await human_delay(1000, 2000)
+        await human_delay(2000, 3000)
 
         # إدخال الإيميل
-        await human_type(page, 'input[type="email"]', email)
+        email_input = None
+        email_selectors = [
+            'input[type="email"]',
+            'input[id="identifierId"]',
+            '#identifierId',
+        ]
+        for sel in email_selectors:
+            try:
+                email_input = await page.wait_for_selector(sel, timeout=15000)
+                if email_input:
+                    break
+            except:
+                continue
+
+        if not email_input:
+            return "error:email_input_not_found"
+
+        await human_type(email_input, email)
         await human_delay(500, 1000)
-        await page.keyboard.press("Enter")
-        await human_delay(2000, 3000)
+
+        # الضغط على Next
+        next_selectors = [
+            '#identifierNext',
+            'button:has-text("Next")',
+            'div[id="identifierNext"]',
+        ]
+        for sel in next_selectors:
+            try:
+                btn = await page.wait_for_selector(sel, timeout=5000)
+                if btn:
+                    await btn.click()
+                    break
+            except:
+                continue
+
+        await human_delay(3000, 5000)
 
         # التحقق من OTP بعد الإيميل
         if await check_otp(page):
             return "otp"
 
         # التحقق من الحساب غير موجود
-        if await check_selector(page, '[data-error="noAccount"]'):
+        if await check_selector(page, 'text="Couldn\'t find your Google Account"', 2000):
+            return "no_account"
+        if await check_selector(page, 'text="Could not find your Google Account"', 2000):
             return "no_account"
 
         # إدخال الباسورد
-        await human_type(page, 'input[type="password"]', password)
+        pass_input = None
+        pass_selectors = [
+            'input[type="password"]',
+            'input[name="password"]',
+            '#password input',
+        ]
+        for sel in pass_selectors:
+            try:
+                pass_input = await page.wait_for_selector(sel, timeout=15000)
+                if pass_input:
+                    break
+            except:
+                continue
+
+        if not pass_input:
+            return "error:password_input_not_found"
+
+        await human_type(pass_input, password)
         await human_delay(500, 1000)
-        await page.keyboard.press("Enter")
-        await human_delay(3000, 4000)
+
+        # الضغط على Next
+        pass_next_selectors = [
+            '#passwordNext',
+            'button:has-text("Next")',
+            'div[id="passwordNext"]',
+        ]
+        for sel in pass_next_selectors:
+            try:
+                btn = await page.wait_for_selector(sel, timeout=5000)
+                if btn:
+                    await btn.click()
+                    break
+            except:
+                continue
+
+        await human_delay(4000, 6000)
 
         # التحقق من النتيجة
-        current_url = page.url
-
         if await check_otp(page):
             return "otp"
 
-        if await check_selector(page, '[data-error="wrongpassword"]'):
+        if await check_selector(page, 'text="Wrong password"', 2000):
+            return "wrong_password"
+        if await check_selector(page, 'text="wrong password"', 2000):
             return "wrong_password"
 
-        if await check_selector(page, 'text="couldn\'t sign you in"'):
-            return "blocked"
-
-        if await check_selector(page, 'text="account has been disabled"'):
+        if await check_selector(page, 'text="account has been disabled"', 2000):
             return "disabled"
 
-        if "myaccount.google.com" in current_url or \
-           "google.com" in current_url and "signin" not in current_url:
+        if await check_selector(page, 'text="couldn\'t sign you in"', 2000):
+            return "blocked"
+
+        # تحقق من النجاح
+        current_url = page.url
+        if "myaccount.google.com" in current_url:
+            return "success"
+        if "google.com" in current_url and "accounts" not in current_url:
+            return "success"
+        if "signin" not in current_url and "google.com" in current_url:
             return "success"
 
-        # محاولة إضافية للتحقق
-        await human_delay(2000, 3000)
+        # انتظار إضافي
+        await human_delay(3000, 4000)
         current_url = page.url
         if "accounts.google.com" not in current_url:
             return "success"
@@ -188,15 +223,13 @@ async def google_login(page, email, password):
 
 async def add_card_to_google(page, card):
     try:
-        # الذهاب لصفحة Google Pay
         await page.goto(
             "https://pay.google.com/gp/w/u/0/home/paymentmethods",
-            wait_until="networkidle",
-            timeout=30000
+            wait_until="domcontentloaded",
+            timeout=60000
         )
-        await human_delay(2000, 3000)
+        await human_delay(3000, 5000)
 
-        # التحقق من تحميل الصفحة
         current_url = page.url
         if "accounts.google.com" in current_url:
             return "session_expired"
@@ -204,21 +237,19 @@ async def add_card_to_google(page, card):
         if await check_otp(page):
             return "otp"
 
-        # البحث عن زر إضافة بطاقة
-        add_button_selectors = [
-            'button[data-action="add"]',
+        # البحث عن زر إضافة
+        add_button = None
+        add_selectors = [
             'button:has-text("Add card")',
             'button:has-text("Add a card")',
             'button:has-text("Add payment method")',
+            '[data-action="add"]',
             '[aria-label="Add card"]',
             '[aria-label="Add a card"]',
-            'c-wiz button:first-of-type',
         ]
-
-        add_button = None
-        for selector in add_button_selectors:
+        for sel in add_selectors:
             try:
-                add_button = await page.wait_for_selector(selector, timeout=5000)
+                add_button = await page.wait_for_selector(sel, timeout=8000)
                 if add_button:
                     break
             except:
@@ -227,23 +258,20 @@ async def add_card_to_google(page, card):
         if not add_button:
             return "no_add_button"
 
-        await human_click(page, add_button if isinstance(add_button, str) else None)
-        if not isinstance(add_button, str):
-            await add_button.click()
+        await add_button.click()
         await human_delay(2000, 3000)
 
-        # ملء بيانات البطاقة
+        # ملء البطاقة
         fill_result = await fill_card_details(page, card)
         if fill_result != "success":
             return fill_result
 
-        # حفظ البطاقة
-        save_result = await save_card(page)
+        # حفظ
+        save_result = await save_card_button(page)
         if save_result != "success":
             return save_result
 
-        # التحقق من النتيجة
-        await human_delay(3000, 4000)
+        await human_delay(3000, 5000)
         return await check_card_added(page, card["number"])
 
     except Exception as e:
@@ -262,32 +290,29 @@ async def fill_card_details(page, card):
     try:
         # محاولة مع iframe
         try:
-            await page.wait_for_selector("iframe", timeout=5000)
+            await page.wait_for_selector("iframe", timeout=8000)
             frames = page.frames
 
             for frame in frames:
                 try:
                     card_input = await frame.wait_for_selector(
                         'input[autocomplete="cc-number"], input[name="cardnumber"]',
-                        timeout=3000
+                        timeout=5000
                     )
                     if card_input:
-                        await card_input.fill(number)
-                        await human_delay(500, 1000)
+                        await human_type(card_input, number)
 
                         exp_input = await frame.wait_for_selector(
                             'input[autocomplete="cc-exp"], input[name="exp-date"]',
-                            timeout=3000
+                            timeout=5000
                         )
-                        await exp_input.fill(f"{month}/{year}")
-                        await human_delay(500, 1000)
+                        await human_type(exp_input, f"{month}/{year}")
 
                         cvv_input = await frame.wait_for_selector(
                             'input[autocomplete="cc-csc"], input[name="cvc"]',
-                            timeout=3000
+                            timeout=5000
                         )
-                        await cvv_input.fill(cvv)
-                        await human_delay(500, 1000)
+                        await human_type(cvv_input, cvv)
 
                         return "success"
                 except:
@@ -295,56 +320,50 @@ async def fill_card_details(page, card):
         except:
             pass
 
-        # محاولة بدون iframe
-        selectors_map = {
-            "number": [
-                'input[autocomplete="cc-number"]',
-                'input[name="cardnumber"]',
-                'input[id*="card"]',
-            ],
-            "expiry": [
-                'input[autocomplete="cc-exp"]',
-                'input[name="exp-date"]',
-                'input[id*="expiry"]',
-                'input[id*="exp"]',
-            ],
-            "cvv": [
-                'input[autocomplete="cc-csc"]',
-                'input[name="cvc"]',
-                'input[id*="cvv"]',
-                'input[id*="cvc"]',
-            ]
-        }
+        # بدون iframe
+        number_selectors = [
+            'input[autocomplete="cc-number"]',
+            'input[name="cardnumber"]',
+            'input[id*="card-number"]',
+            'input[placeholder*="card"]',
+        ]
+        exp_selectors = [
+            'input[autocomplete="cc-exp"]',
+            'input[name="exp-date"]',
+            'input[id*="expiry"]',
+            'input[placeholder*="MM"]',
+        ]
+        cvv_selectors = [
+            'input[autocomplete="cc-csc"]',
+            'input[name="cvc"]',
+            'input[id*="cvv"]',
+            'input[id*="cvc"]',
+            'input[placeholder*="CVV"]',
+        ]
 
-        # رقم البطاقة
-        for sel in selectors_map["number"]:
+        for sel in number_selectors:
             try:
-                el = await page.wait_for_selector(sel, timeout=3000)
+                el = await page.wait_for_selector(sel, timeout=5000)
                 if el:
-                    await el.fill(number)
-                    await human_delay(500, 1000)
+                    await human_type(el, number)
                     break
             except:
                 continue
 
-        # تاريخ الانتهاء
-        for sel in selectors_map["expiry"]:
+        for sel in exp_selectors:
             try:
-                el = await page.wait_for_selector(sel, timeout=3000)
+                el = await page.wait_for_selector(sel, timeout=5000)
                 if el:
-                    await el.fill(f"{month}/{year}")
-                    await human_delay(500, 1000)
+                    await human_type(el, f"{month}/{year}")
                     break
             except:
                 continue
 
-        # CVV
-        for sel in selectors_map["cvv"]:
+        for sel in cvv_selectors:
             try:
-                el = await page.wait_for_selector(sel, timeout=3000)
+                el = await page.wait_for_selector(sel, timeout=5000)
                 if el:
-                    await el.fill(cvv)
-                    await human_delay(500, 1000)
+                    await human_type(el, cvv)
                     break
             except:
                 continue
@@ -358,7 +377,7 @@ async def fill_card_details(page, card):
 #      حفظ البطاقة
 # ═══════════════════════════════
 
-async def save_card(page):
+async def save_card_button(page):
     save_selectors = [
         'button:has-text("Save")',
         'button:has-text("Add")',
@@ -366,12 +385,12 @@ async def save_card(page):
         'button[type="submit"]',
         '[aria-label="Save"]',
     ]
-    for selector in save_selectors:
+    for sel in save_selectors:
         try:
-            btn = await page.wait_for_selector(selector, timeout=3000)
+            btn = await page.wait_for_selector(sel, timeout=5000)
             if btn:
                 await btn.click()
-                await human_delay(1000, 2000)
+                await human_delay(2000, 3000)
                 return "success"
         except:
             continue
@@ -384,34 +403,28 @@ async def save_card(page):
 async def check_card_added(page, card_number):
     last4 = card_number[-4:]
     try:
-        # نجاح
         success_checks = [
             f'text="{last4}"',
             'text="Card added"',
             'text="Payment method added"',
+            'text="card has been added"',
         ]
         for sel in success_checks:
             try:
-                el = await page.wait_for_selector(sel, timeout=3000)
+                el = await page.wait_for_selector(sel, timeout=5000)
                 if el:
                     return "success"
             except:
                 continue
 
-        # بطاقة مرفوضة
-        if await check_selector(page, 'text="declined"') or \
-           await check_selector(page, 'text="invalid"'):
+        if await check_selector(page, 'text="declined"', 3000):
             return "declined"
-
-        # بطاقة منتهية
-        if await check_selector(page, 'text="expired"'):
+        if await check_selector(page, 'text="invalid"', 3000):
+            return "declined"
+        if await check_selector(page, 'text="expired"', 3000):
             return "expired"
-
-        # موجودة مسبقاً
-        if await check_selector(page, 'text="already"'):
+        if await check_selector(page, 'text="already"', 3000):
             return "already_exists"
-
-        # OTP
         if await check_otp(page):
             return "otp"
 
@@ -432,6 +445,7 @@ async def check_otp(page):
         'text="Verify it\'s you"',
         'text="Check your phone"',
         'text="Enter the code"',
+        'text="Get a verification code"',
     ]
     for sel in otp_selectors:
         try:
@@ -442,9 +456,9 @@ async def check_otp(page):
             continue
     return False
 
-async def check_selector(page, selector):
+async def check_selector(page, selector, timeout=1000):
     try:
-        el = await page.wait_for_selector(selector, timeout=1000)
+        el = await page.wait_for_selector(selector, timeout=timeout)
         return el is not None
     except:
         return False
@@ -464,7 +478,6 @@ async def link_card(account: dict, card: dict) -> str:
             browser, context = await create_browser(p)
             page = await context.new_page()
 
-            # تسجيل الدخول
             login_result = await google_login(page, email, password)
 
             if login_result == "otp":
@@ -506,7 +519,6 @@ async def link_card(account: dict, card: dict) -> str:
                     f"⚠️ `{login_result}`"
                 )
 
-            # إضافة البطاقة
             card_result = await add_card_to_google(page, card)
             await browser.close()
 
@@ -524,7 +536,7 @@ async def link_card(account: dict, card: dict) -> str:
                 )
             elif card_result == "declined":
                 return (
-                    f"❌ *البطاقة مرفوضة من البنك*\n\n"
+                    f"❌ *البطاقة مرفوضة*\n\n"
                     f"👤 `{email}`\n"
                     f"💳 `{masked}`"
                 )
