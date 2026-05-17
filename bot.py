@@ -93,6 +93,7 @@ async def menu_accounts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("➕ إضافة حساب", callback_data="add_account")],
+        [InlineKeyboardButton("📂 رفع ملف accounts.txt", callback_data="upload_accounts_info")],
         [InlineKeyboardButton("📋 عرض الحسابات", callback_data="view_accounts")],
         [InlineKeyboardButton("🗑️ حذف حساب", callback_data="del_account_menu")],
         [InlineKeyboardButton("🔙 رجوع", callback_data="back_main")]
@@ -100,6 +101,34 @@ async def menu_accounts(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(
         "👥 *إدارة الحسابات*",
         reply_markup=keyboard,
+        parse_mode="Markdown"
+    )
+
+async def upload_accounts_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text(
+        "📂 *رفع ملف الحسابات*\n\n"
+        "أرسل ملف اسمه:\n"
+        "`accounts.txt`\n\n"
+        "الصيغة داخل الملف:\n"
+        "`email@gmail.com:password`\n"
+        "`email2@gmail.com:password2`\n\n"
+        "أرسل الملف الآن 👇",
+        parse_mode="Markdown"
+    )
+
+async def upload_cards_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text(
+        "📂 *رفع ملف البطاقات*\n\n"
+        "أرسل ملف اسمه:\n"
+        "`cards.txt`\n\n"
+        "الصيغة داخل الملف:\n"
+        "`5488093706666666|09|27|000`\n"
+        "`4111111111111111|12|26|123`\n\n"
+        "أرسل الملف الآن 👇",
         parse_mode="Markdown"
     )
 
@@ -112,7 +141,7 @@ async def view_accounts(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "📭 *لا يوجد حسابات*\n\n"
             "أضف حسابات عن طريق:\n"
             "• زر إضافة حساب\n"
-            "• أو عدل ملف accounts.txt مباشرة\n\n"
+            "• أو أرسل ملف accounts.txt\n\n"
             "الصيغة:\n`email@gmail.com:password`"
         )
     else:
@@ -131,11 +160,9 @@ async def add_account_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     await query.edit_message_text(
         "➕ *إضافة حساب*\n\n"
-        "أرسل بيانات الحساب بهذا الشكل:\n"
+        "أرسل بيانات الحساب:\n"
         "`email@gmail.com:password`\n\n"
-        "مثال:\n"
-        "`son@gmail.com:Pass1234`\n\n"
-        "أو أرسل عدة حسابات دفعة وحدة:\n"
+        "أو عدة حسابات دفعة وحدة:\n"
         "`email1@gmail.com:pass1`\n"
         "`email2@gmail.com:pass2`",
         parse_mode="Markdown"
@@ -244,6 +271,7 @@ async def menu_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("➕ إضافة بطاقة", callback_data="add_card")],
+        [InlineKeyboardButton("📂 رفع ملف cards.txt", callback_data="upload_cards_info")],
         [InlineKeyboardButton("📋 عرض البطاقات", callback_data="view_cards")],
         [InlineKeyboardButton("🗑️ حذف بطاقة", callback_data="del_card_menu")],
         [InlineKeyboardButton("🔙 رجوع", callback_data="back_main")]
@@ -263,7 +291,7 @@ async def view_cards(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "📭 *لا يوجد بطاقات*\n\n"
             "أضف بطاقات عن طريق:\n"
             "• زر إضافة بطاقة\n"
-            "• أو عدل ملف cards.txt مباشرة\n\n"
+            "• أو أرسل ملف cards.txt\n\n"
             "الصيغة:\n`رقم|شهر|سنة|cvv`\n"
             "مثال:\n`5488093706666666|09|27|000`"
         )
@@ -284,11 +312,11 @@ async def add_card_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     await query.edit_message_text(
         "➕ *إضافة بطاقة*\n\n"
-        "أرسل بيانات البطاقة بهذا الشكل:\n"
+        "أرسل بيانات البطاقة:\n"
         "`رقم|شهر|سنة|cvv`\n\n"
         "مثال:\n"
         "`5488093706666666|09|27|000`\n\n"
-        "أو أرسل عدة بطاقات دفعة وحدة:\n"
+        "أو عدة بطاقات دفعة وحدة:\n"
         "`5488093706666666|09|27|000`\n"
         "`4111111111111111|12|26|123`",
         parse_mode="Markdown"
@@ -392,6 +420,137 @@ async def del_card_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ═══════════════════════════════
+#      استقبال ملفات TXT
+# ═══════════════════════════════
+
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update):
+        return
+
+    document = update.message.document
+
+    if not document.file_name.endswith(".txt"):
+        await update.message.reply_text("❌ أرسل ملف TXT فقط")
+        return
+
+    file = await document.get_file()
+    content = await file.download_as_bytearray()
+    text = content.decode("utf-8").strip()
+    lines = text.split("\n")
+
+    # ═══ حسابات ═══
+    if "accounts" in document.file_name.lower():
+        added = []
+        failed = []
+        exists = []
+
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            if ":" not in line:
+                failed.append(line)
+                continue
+            parts = line.split(":", 1)
+            if len(parts) != 2:
+                failed.append(line)
+                continue
+            email, password = parts[0].strip(), parts[1].strip()
+            if not email or not password:
+                failed.append(line)
+                continue
+            result = add_account(email, password)
+            if result:
+                added.append(email)
+            else:
+                exists.append(email)
+
+        response = f"📂 *نتيجة رفع {document.file_name}*\n\n"
+        if added:
+            response += f"✅ *تم إضافة {len(added)} حساب:*\n"
+            for e in added:
+                response += f"• `{e}`\n"
+            response += "\n"
+        if exists:
+            response += f"⚠️ *موجود مسبقاً {len(exists)}:*\n"
+            for e in exists:
+                response += f"• `{e}`\n"
+            response += "\n"
+        if failed:
+            response += f"❌ *فشل {len(failed)} - صيغة خاطئة:*\n"
+            for e in failed:
+                response += f"• `{e}`\n"
+
+        keyboard = [[InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="back_main")]]
+        await update.message.reply_text(
+            response,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+
+    # ═══ بطاقات ═══
+    elif "cards" in document.file_name.lower():
+        added = []
+        failed = []
+        exists = []
+
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            if "|" not in line:
+                failed.append(line)
+                continue
+            parts = line.split("|")
+            if len(parts) != 4:
+                failed.append(line)
+                continue
+            number, month, year, cvv = [p.strip() for p in parts]
+            if not all([number, month, year, cvv]):
+                failed.append(line)
+                continue
+            if not number.isdigit() or len(number) < 15:
+                failed.append(f"{line} ← رقم خاطئ")
+                continue
+            result = add_card(number, month, year, cvv)
+            if result:
+                added.append(f"****{number[-4:]}")
+            else:
+                exists.append(f"****{number[-4:]}")
+
+        response = f"📂 *نتيجة رفع {document.file_name}*\n\n"
+        if added:
+            response += f"✅ *تم إضافة {len(added)} بطاقة:*\n"
+            for c in added:
+                response += f"• `{c}`\n"
+            response += "\n"
+        if exists:
+            response += f"⚠️ *موجودة مسبقاً {len(exists)}:*\n"
+            for c in exists:
+                response += f"• `{c}`\n"
+            response += "\n"
+        if failed:
+            response += f"❌ *فشل {len(failed)} - صيغة خاطئة:*\n"
+            for c in failed:
+                response += f"• `{c}`\n"
+
+        keyboard = [[InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="back_main")]]
+        await update.message.reply_text(
+            response,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+
+    else:
+        await update.message.reply_text(
+            "❌ *اسم الملف غير معروف*\n\n"
+            "سمي الملف:\n"
+            "• `accounts.txt` للحسابات\n"
+            "• `cards.txt` للبطاقات",
+            parse_mode="Markdown"
+        )
+
+# ═══════════════════════════════
 #         ربط بطاقة بحساب
 # ═══════════════════════════════
 
@@ -426,7 +585,6 @@ async def link_choose_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     acc_index = int(query.data.replace("linkaccount_", ""))
     accounts = load_accounts()
-    context.user_data["link_account_index"] = acc_index
     context.user_data["link_account"] = accounts[acc_index]
     cards = load_cards()
     if not cards:
@@ -496,8 +654,6 @@ async def link_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not cards:
         await query.edit_message_text("📭 أضف بطاقات أولاً")
         return
-
-    # اختيار البطاقة أولاً
     buttons = []
     for i, card in enumerate(cards):
         masked = f"****{card['number'][-4:]}"
@@ -537,16 +693,35 @@ async def link_all_execute(update: Update, context: ContextTypes.DEFAULT_TYPE):
     failed = []
     otp_needed = []
 
-    for acc in accounts:
+    for i, acc in enumerate(accounts):
+        # تحديث التقدم كل 3 حسابات
+        if i % 3 == 0:
+            try:
+                await query.edit_message_text(
+                    f"🚀 *جاري الربط...*\n\n"
+                    f"💳 البطاقة: `{masked}`\n"
+                    f"👥 الحسابات: `{len(accounts)}`\n"
+                    f"⏳ تم: `{i}/{len(accounts)}`\n"
+                    f"✅ نجح: `{len(success)}`\n"
+                    f"❌ فشل: `{len(failed)}`\n"
+                    f"⚠️ OTP: `{len(otp_needed)}`",
+                    parse_mode="Markdown"
+                )
+            except:
+                pass
+
         result = await link_card(acc, card)
+
         if "✅" in result:
             success.append(acc["email"])
         elif "⚠️" in result:
             otp_needed.append(acc["email"])
         else:
-            failed.append(f"{acc['email']}")
+            failed.append(acc["email"])
 
-    report = f"📊 *تقرير الربط - {masked}*\n\n"
+    report = f"📊 *تقرير الربط*\n\n"
+    report += f"💳 البطاقة: `{masked}`\n"
+    report += f"👥 إجمالي الحسابات: `{len(accounts)}`\n\n"
 
     if success:
         report += f"✅ *نجح ({len(success)}):*\n"
@@ -569,6 +744,7 @@ async def link_all_execute(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🚀 ربط الكل مجدداً", callback_data="link_all")],
         [InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="back_main")]
     ])
+
     await query.edit_message_text(
         report,
         reply_markup=keyboard,
@@ -605,21 +781,24 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(acc_conv)
     app.add_handler(card_conv)
-    app.add_handler(CallbackQueryHandler(back_main,          pattern="^back_main$"))
-    app.add_handler(CallbackQueryHandler(stats,              pattern="^stats$"))
-    app.add_handler(CallbackQueryHandler(menu_accounts,      pattern="^menu_accounts$"))
-    app.add_handler(CallbackQueryHandler(menu_cards,         pattern="^menu_cards$"))
-    app.add_handler(CallbackQueryHandler(menu_link,          pattern="^menu_link$"))
-    app.add_handler(CallbackQueryHandler(link_all,           pattern="^link_all$"))
-    app.add_handler(CallbackQueryHandler(view_accounts,      pattern="^view_accounts$"))
-    app.add_handler(CallbackQueryHandler(view_cards,         pattern="^view_cards$"))
-    app.add_handler(CallbackQueryHandler(del_account_menu,   pattern="^del_account_menu$"))
-    app.add_handler(CallbackQueryHandler(del_card_menu,      pattern="^del_card_menu$"))
-    app.add_handler(CallbackQueryHandler(del_account_confirm,pattern="^delacc_"))
-    app.add_handler(CallbackQueryHandler(del_card_confirm,   pattern="^delcard_"))
-    app.add_handler(CallbackQueryHandler(link_choose_card,   pattern="^linkaccount_"))
-    app.add_handler(CallbackQueryHandler(link_execute,       pattern="^linkcard_"))
-    app.add_handler(CallbackQueryHandler(link_all_execute,   pattern="^linkallcard_"))
+    app.add_handler(MessageHandler(filters.Document.TXT, handle_document))
+    app.add_handler(CallbackQueryHandler(back_main,             pattern="^back_main$"))
+    app.add_handler(CallbackQueryHandler(stats,                 pattern="^stats$"))
+    app.add_handler(CallbackQueryHandler(menu_accounts,         pattern="^menu_accounts$"))
+    app.add_handler(CallbackQueryHandler(menu_cards,            pattern="^menu_cards$"))
+    app.add_handler(CallbackQueryHandler(menu_link,             pattern="^menu_link$"))
+    app.add_handler(CallbackQueryHandler(link_all,              pattern="^link_all$"))
+    app.add_handler(CallbackQueryHandler(view_accounts,         pattern="^view_accounts$"))
+    app.add_handler(CallbackQueryHandler(view_cards,            pattern="^view_cards$"))
+    app.add_handler(CallbackQueryHandler(del_account_menu,      pattern="^del_account_menu$"))
+    app.add_handler(CallbackQueryHandler(del_card_menu,         pattern="^del_card_menu$"))
+    app.add_handler(CallbackQueryHandler(del_account_confirm,   pattern="^delacc_"))
+    app.add_handler(CallbackQueryHandler(del_card_confirm,      pattern="^delcard_"))
+    app.add_handler(CallbackQueryHandler(link_choose_card,      pattern="^linkaccount_"))
+    app.add_handler(CallbackQueryHandler(link_execute,          pattern="^linkcard_"))
+    app.add_handler(CallbackQueryHandler(link_all_execute,      pattern="^linkallcard_"))
+    app.add_handler(CallbackQueryHandler(upload_accounts_info,  pattern="^upload_accounts_info$"))
+    app.add_handler(CallbackQueryHandler(upload_cards_info,     pattern="^upload_cards_info$"))
 
     print("✅ البوت شغال...")
     app.run_polling(drop_pending_updates=True)
